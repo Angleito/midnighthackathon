@@ -1,0 +1,478 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+/* Global styles for the ZK Ocean Combat application */
+
+html, body, div, span, applet, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, img, ins, kbd, q, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font-size: 100%;
+    font: inherit;
+    vertical-align: baseline;
+}
+
+:root {
+  --bg-primary: #0a0e27;
+  --bg-secondary: #151a3a;
+  --bg-tertiary: #1e2451;
+  --ocean-dark: #0f172a;
+  --ocean-blue: #0891b2;
+  --ocean-teal: #14b8a6;
+  --ocean-light: #67e8f9;
+  --hit-red: #ef4444;
+  --miss-gray: #6b7280;
+  --text-primary: #e0f2fe;
+  --text-secondary: #94a3b8;
+  --border-color: #334155;
+  --success: #10b981;
+  --warning: #f59e0b;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  line-height: 1;
+  font-family: 'Orbitron', monospace;
+  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--ocean-dark) 100%);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Wallet Connect Styles */
+.wallet-connect {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+}
+
+.connect-btn, .disconnect-btn {
+  background: linear-gradient(135deg, var(--ocean-blue), var(--ocean-teal));
+  border: none;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'Orbitron', monospace;
+}
+
+.connect-btn:hover, .disconnect-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(8, 145, 178, 0.3);
+}
+
+.wallet-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-secondary);
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.address {
+  color: var(--ocean-light);
+  font-weight: 500;
+}
+
+.wallet-icon {
+  margin-right: 8px;
+}
+
+/* Game Board Styles */
+.game-container {
+  display: flex;
+  gap: 40px;
+  padding: 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.game-board-container {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border-color);
+}
+
+.board-title {
+  text-align: center;
+  margin-bottom: 20px;
+  color: var(--ocean-light);
+  font-size: 1.5rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.game-board {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.board-labels-top {
+  display: flex;
+  gap: 2px;
+  margin-left: 32px;
+}
+
+.board-content {
+  display: flex;
+  gap: 8px;
+}
+
+.board-labels-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.label {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.board-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--ocean-dark);
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.board-row {
+  display: flex;
+  gap: 2px;
+}
+
+.game-cell {
+  width: 30px;
+  height: 30px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: crosshair;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.game-cell.has-ship {
+  background: var(--ocean-blue);
+  opacity: 0.8;
+}
+
+.game-cell.is-hit {
+  background: var(--hit-red);
+  animation: explosion 0.5s ease;
+}
+
+.game-cell.is-miss {
+  background: var(--miss-gray);
+  opacity: 0.5;
+}
+
+.game-cell.can-attack:hover {
+  background: var(--ocean-teal);
+  border-color: var(--ocean-light);
+  transform: scale(1.1);
+  z-index: 10;
+}
+
+.hit-marker, .miss-marker, .ship-marker {
+  font-size: 1.2rem;
+}
+
+@keyframes explosion {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.5); }
+  100% { transform: scale(1); }
+}
+
+/* Ship Placement Styles */
+.ship-placement {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 24px;
+  min-width: 300px;
+  border: 1px solid var(--border-color);
+}
+
+.placement-title {
+  color: var(--ocean-light);
+  margin-bottom: 20px;
+  text-align: center;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.ships-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.ship-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.ship-item:hover:not(.is-placed) {
+  border-color: var(--ocean-blue);
+  background: var(--bg-primary);
+}
+
+.ship-item.is-selected {
+  border-color: var(--ocean-teal);
+  background: var(--bg-primary);
+}
+
+.ship-item.is-placed {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ship-icon {
+  font-size: 1.5rem;
+}
+
+.ship-name {
+  flex: 1;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.ship-size {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.placed-check {
+  color: var(--success);
+  font-size: 1.2rem;
+}
+
+.placement-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.rotate-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'Orbitron', monospace;
+}
+
+.rotate-btn:hover {
+  background: var(--ocean-blue);
+  transform: rotate(90deg);
+}
+
+.placement-hint {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.start-battle-btn {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, var(--ocean-blue), var(--ocean-teal));
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-size: 1.2rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-family: 'Orbitron', monospace;
+}
+
+.start-battle-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(20, 184, 166, 0.4);
+}
+
+/* Attack Panel Styles */
+.attack-panel {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 24px;
+  min-width: 280px;
+  border: 1px solid var(--border-color);
+}
+
+.panel-title {
+  color: var(--ocean-light);
+  margin-bottom: 20px;
+  text-align: center;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.battle-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+}
+
+.stat-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.stat-value {
+  color: var(--ocean-light);
+  font-weight: 700;
+}
+
+.attack-status {
+  text-align: center;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-weight: 700;
+}
+
+.attacking {
+  color: var(--warning);
+}
+
+.ready {
+  color: var(--success);
+}
+
+.game-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hint {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  border-left: 3px solid var(--ocean-blue);
+}
+
+/* Header Styles */
+.app-header {
+  text-align: center;
+  padding: 40px 20px;
+  background: linear-gradient(180deg, var(--bg-primary) 0%, transparent 100%);
+}
+
+.app-title {
+  font-size: 3rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--ocean-light), var(--ocean-teal));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  margin-bottom: 8px;
+}
+
+.app-subtitle {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 2px;
+}
+
+/* Loading State */
+.loading {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .game-container {
+    flex-direction: column;
+    padding: 20px;
+  }
+
+  .app-title {
+    font-size: 2rem;
+  }
+
+  .game-cell {
+    width: 25px;
+    height: 25px;
+  }
+
+  .wallet-connect {
+    position: static;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+}

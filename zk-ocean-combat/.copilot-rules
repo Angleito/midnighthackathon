@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="ZK Ocean Combat Assistant Rules" version="1.0">
+    <description>
+        Comprehensive ruleset for ZK Ocean Combat project using Midnight Protocol.
+        Focus on zero-knowledge proofs, turn-based combat mechanics, and clean React/TypeScript code.
+    </description>
+
+    <!-- Core Methodology -->
+    <methodology>
+        <principle name="THINK_PLAN_EXECUTE">
+            <description>Always follow the three-step process</description>
+            <step order="1">THINK - Analyze ZK requirements and game mechanics</step>
+            <step order="2">PLAN - Design state management and proof generation</step>
+            <step order="3">EXECUTE - Implement with TypeScript, React, and Midnight SDK</step>
+        </principle>
+    </methodology>
+
+    <!-- Project-Specific Standards -->
+    <project_standards>
+        <standard name="MIDNIGHT_PROTOCOL">
+            <rule>Use @midnight-ntwrk packages for all ZK operations</rule>
+            <rule>Implement proper wallet connection via DApp Connector API</rule>
+            <rule>Handle compact runtime operations efficiently</rule>
+            <rule>Ensure privacy preservation in all combat moves</rule>
+        </standard>
+        
+        <standard name="REACT_PATTERNS">
+            <rule>Use functional components with hooks exclusively</rule>
+            <rule>Implement proper state management with Context API or reducers</rule>
+            <rule>Optimize re-renders with React.memo and useMemo</rule>
+            <rule>Use React Router for navigation between game states</rule>
+        </standard>
+        
+        <standard name="TYPESCRIPT_STRICT">
+            <rule>Enable strict mode in tsconfig.json</rule>
+            <rule>Define interfaces for all game entities and ZK proofs</rule>
+            <rule>Use type guards for runtime type checking</rule>
+            <rule>Avoid any type - use unknown or generics instead</rule>
+        </standard>
+    </project_standards>
+
+    <!-- Code Quality Standards -->
+    <code_quality>
+        <standard name="BREVITY">
+            <rule>Use concise TypeScript syntax and modern ES6+ features</rule>
+            <rule>Leverage Tailwind CSS utilities over custom CSS</rule>
+            <rule>Extract reusable React hooks for game logic</rule>
+        </standard>
+        
+        <standard name="EFFICIENCY">
+            <rule>Minimize ZK proof generation overhead</rule>
+            <rule>Cache wallet connections and game state</rule>
+            <rule>Use lazy loading for game assets</rule>
+            <rule>Optimize bundle size with code splitting</rule>
+        </standard>
+        
+        <standard name="MODULARITY">
+            <rule>Separate ZK logic into dedicated modules</rule>
+            <rule>Create reusable combat components</rule>
+            <rule>Isolate Midnight Protocol interactions</rule>
+            <rule>Build composable game mechanics</rule>
+        </standard>
+    </code_quality>
+
+    <!-- Separation of Concerns -->
+    <separation_of_concerns>
+        <layer name="presentation">
+            <directory>src/components</directory>
+            <rule>React components for UI rendering</rule>
+            <rule>Game board visualization</rule>
+            <rule>Combat animations and effects</rule>
+        </layer>
+        
+        <layer name="game_logic">
+            <directory>src/game</directory>
+            <rule>Turn-based combat mechanics</rule>
+            <rule>Ship movement and targeting</rule>
+            <rule>Damage calculation and victory conditions</rule>
+        </layer>
+        
+        <layer name="zk_layer">
+            <directory>src/zk</directory>
+            <rule>Proof generation for moves</rule>
+            <rule>Move verification without revealing positions</rule>
+            <rule>Midnight contract interactions</rule>
+        </layer>
+        
+        <layer name="wallet">
+            <directory>src/wallet</directory>
+            <rule>Midnight wallet connection</rule>
+            <rule>Transaction signing</rule>
+            <rule>Account management</rule>
+        </layer>
+    </separation_of_concerns>
+
+    <!-- ZK-Specific Guidelines -->
+    <zk_guidelines>
+        <principle name="PRIVACY_FIRST">
+            <rule>Never expose ship positions in clear text</rule>
+            <rule>Generate proofs for all combat actions</rule>
+            <rule>Verify moves without revealing strategy</rule>
+            <rule>Maintain fog of war through ZK proofs</rule>
+        </principle>
+        
+        <principle name="PROOF_OPTIMIZATION">
+            <rule>Batch proof generation when possible</rule>
+            <rule>Cache verified proofs for replay</rule>
+            <rule>Minimize proof size for network efficiency</rule>
+            <rule>Use appropriate circuit complexity</rule>
+        </principle>
+    </zk_guidelines>
+
+    <!-- File Organization -->
+    <file_organization>
+        <structure name="PROJECT_LAYOUT">
+            <directory name="src">
+                <subdirectory name="components">React UI components</subdirectory>
+                <subdirectory name="game">Core game mechanics</subdirectory>
+                <subdirectory name="zk">Zero-knowledge proof logic</subdirectory>
+                <subdirectory name="wallet">Midnight wallet integration</subdirectory>
+                <subdirectory name="hooks">Custom React hooks</subdirectory>
+                <subdirectory name="utils">Utility functions</subdirectory>
+                <subdirectory name="types">TypeScript type definitions</subdirectory>
+                <subdirectory name="assets">Game assets and images</subdirectory>
+            </directory>
+            <directory name="contracts">Midnight smart contracts</directory>
+            <directory name="public">Static assets</directory>
+            <file name="README.md">Project documentation</file>
+        </structure>
+        
+        <naming_conventions>
+            <rule>Use PascalCase for React components</rule>
+            <rule>Use camelCase for functions and variables</rule>
+            <rule>Use UPPER_SNAKE_CASE for constants</rule>
+            <rule>Prefix interfaces with I (e.g., IGameState)</rule>
+            <rule>Suffix types with Type (e.g., MoveType)</rule>
+        </naming_conventions>
+    </file_organization>
+
+    <!-- Testing Strategy -->
+    <testing_strategy>
+        <approach name="COMPONENT_TESTING">
+            <rule>Test React components in isolation</rule>
+            <rule>Verify game state transitions</rule>
+            <rule>Test ZK proof generation and verification</rule>
+            <rule>Validate wallet connection flows</rule>
+        </approach>
+        
+        <approach name="INTEGRATION_TESTING">
+            <rule>Test complete game rounds</rule>
+            <rule>Verify Midnight contract interactions</rule>
+            <rule>Test multiplayer synchronization</rule>
+            <rule>Validate proof submission and verification</rule>
+        </approach>
+    </testing_strategy>
+
+    <!-- Development Workflow -->
+    <workflow>
+        <phase name="FEATURE_DEVELOPMENT">
+            <step>Design game mechanic or ZK feature</step>
+            <step>Implement TypeScript interfaces</step>
+            <step>Build React components</step>
+            <step>Integrate with Midnight Protocol</step>
+            <step>Test proof generation and verification</step>
+        </phase>
+        
+        <phase name="OPTIMIZATION">
+            <step>Profile proof generation performance</step>
+            <step>Optimize React render cycles</step>
+            <step>Minimize bundle size</step>
+            <step>Improve game responsiveness</step>
+        </phase>
+    </workflow>
+
+    <!-- Performance Guidelines -->
+    <performance>
+        <guideline name="REACT_OPTIMIZATION">
+            <rule>Use React.memo for expensive components</rule>
+            <rule>Implement virtual scrolling for large lists</rule>
+            <rule>Debounce user inputs</rule>
+            <rule>Lazy load game assets</rule>
+        </guideline>
+        
+        <guideline name="ZK_PERFORMANCE">
+            <rule>Generate proofs asynchronously</rule>
+            <rule>Use Web Workers for proof computation</rule>
+            <rule>Cache proof artifacts</rule>
+            <rule>Optimize circuit design</rule>
+        </guideline>
+    </performance>
+
+    <!-- Error Handling -->
+    <error_handling>
+        <principle name="USER_FEEDBACK">
+            <rule>Show clear error messages for failed proofs</rule>
+            <rule>Handle wallet disconnection gracefully</rule>
+            <rule>Provide fallback UI for loading states</rule>
+            <rule>Log errors for debugging</rule>
+        </principle>
+        
+        <principle name="GAME_INTEGRITY">
+            <rule>Validate all moves before proof generation</rule>
+            <rule>Handle network failures with retry logic</rule>
+            <rule>Maintain game state consistency</rule>
+            <rule>Implement rollback for invalid moves</rule>
+        </principle>
+    </error_handling>
+
+    <!-- Documentation Requirements -->
+    <documentation>
+        <requirement name="README_MANDATORY">
+            <rule>Document game rules and mechanics</rule>
+            <rule>Explain ZK proof system</rule>
+            <rule>Provide setup instructions</rule>
+            <rule>Include Midnight wallet configuration</rule>
+        </requirement>
+        
+        <requirement name="CODE_COMMENTS">
+            <rule>Document complex ZK algorithms</rule>
+            <rule>Explain game state transitions</rule>
+            <rule>Comment proof verification logic</rule>
+            <rule>Document Midnight contract interfaces</rule>
+        </requirement>
+    </documentation>
+</ruleset>
