@@ -13,10 +13,21 @@ declare global {
 
 const appId = import.meta.env.VITE_PRIVY_APP_ID as string | undefined
 
+// Conditionally render Privy provider only if app ID is provided
+const AppWithProviders = () => {
+  if (appId) {
+    return (
+      <PrivyProvider appId={appId}>
+        <App />
+      </PrivyProvider>
+    );
+  }
+  
+  return <App />;
+};
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <PrivyProvider appId={appId || ''}>
-      <App />
-    </PrivyProvider>
+    <AppWithProviders />
   </React.StrictMode>,
 )
