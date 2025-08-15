@@ -2,27 +2,17 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import './styles/globals.css'
-import { PrivyProvider } from '@privy-io/react-auth'
 
-// Extend window for Ethereum
+// Extend window for Midnight wallet detection
 declare global {
   interface Window {
+    midnight?: any;
     ethereum?: Record<string, unknown>;
   }
 }
 
-const appId = import.meta.env.VITE_PRIVY_APP_ID as string | undefined
-
-// Conditionally render Privy provider only if app ID is provided
+// Simple app wrapper without external providers
 const AppWithProviders = () => {
-  if (appId) {
-    return (
-      <PrivyProvider appId={appId}>
-        <App />
-      </PrivyProvider>
-    );
-  }
-  
   return <App />;
 };
 

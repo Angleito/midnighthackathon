@@ -1,55 +1,76 @@
-import { useCallback, useState } from 'react';
-import { usePrivy, useConnectWallet, useWallets } from '@privy-io/react-auth';
+import { useCallback, useState, useEffect } from 'react';
+import { midnightWalletService, type MidnightWalletState } from '@/services/midnightWalletService';
 import { midnightService } from '@/services/midnightService';
 import toast from 'react-hot-toast';
 
 export const useMidnight = () => {
-  const { ready, login, logout } = usePrivy();
-  const { connectWallet } = useConnectWallet();
-  const { wallets, ready: walletsReady } = useWallets();
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [walletState, setWalletState] = useState<MidnightWalletState>({
+    address: null,
+    isConnected: false,
+    isConnecting: false,
+    balances: {},
+    isSync: false,
+    totalBalance: 0n,
+  });
 
-  const primary = wallets[0];
-  const address = primary?.address ?? null;
-  const isConnected = ready && walletsReady && !!primary;
+  const { address, isConnected, isConnecting, balances, isSync, totalBalance } = walletState;
+
+  useEffect(() => {
+    const unsubscribe = midnightWalletService.subscribe((state) => {
+      setWalletState(state);
+    });
+
+    setWalletState(midnightWalletService.getState());
+
+    return unsubscribe;
+  }, []);
 
   const connect = useCallback(async () => {
     if (isConnecting) return;
-    setIsConnecting(true);
+    
     try {
-      // Open Privy wallet connect modal
-      await connectWallet({ walletChainType: 'ethereum-only' });
-      // Ensure session
-      await login?.();
-
-      // Initialize ethers with Privy's EIP-1193 provider
-      const eip1193 = (primary as any)?.provider ?? (wallets[0] as any)?.provider;
-      if (eip1193) {
-        await midnightService.connect(eip1193);
-      }
-      toast.success('Wallet connected');
+      await midnightService.connect();
+      toast.success('Midnight wallet connected successfully');
     } catch (err) {
-      console.error('Privy connect failed', err);
-      toast.error('Failed to connect wallet');
-    } finally {
-      setIsConnecting(false);
+      console.error('Failed to connect Midnight wallet:', err);
+      toast.error('Failed to connect Midnight wallet');
     }
-  }, [connectWallet, login, primary, wallets, isConnecting]);
+  }, [isConnecting]);
 
   const disconnect = useCallback(async () => {
     try {
-      await logout?.();
-    } finally {
       await midnightService.disconnect();
-      toast.success('Wallet disconnected');
+      toast.success('Midnight wallet disconnected');
+    } catch (err) {
+      console.error('Failed to disconnect wallet:', err);
+      toast.error('Failed to disconnect wallet');
     }
-  }, [logout]);
+  }, []);
+
+  const getBalance = useCallback((tokenType?: string) => {
+    try {
+      return midnightWalletService.getBalance(tokenType);
+    } catch (err) {
+      console.error('Failed to get balance:', err);
+      return 0n;
+    }
+  }, []);
+
+  const formatAddress = useCallback((addr: string) => {
+    return midnightWalletService.formatAddress(addr);
+  }, []);
 
   return {
     address,
     isConnecting,
     isConnected,
+    balances,
+    totalBalance,
+    isSync,
     connect,
     disconnect,
+    getBalance,
+    formatAddress,
+    walletState,
   };
 };
