@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  zk-ocean-combat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zk-ocean-combat-test
+    volumes:
+      # Mount logs directory to host for persistence
+      - ./docker-logs:/app/logs
+      # Mount source for development (optional)
+      - .:/app:ro
+    environment:
+      - NODE_ENV=test
+      - VITE_PROVER_SERVER_URI=http://localhost:8080
+      - VITE_MIDNIGHT_ENDPOINT=https://testnet.midnight.network
+      - VITE_ZK_COMBAT_ADDRESS=0x1234567890123456789012345678901234567890
+      - VITE_STATS_MANAGER_ADDRESS=0x0987654321098765432109876543210987654321
+      - VITE_DEPLOYMENT_BLOCK=1000000
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    
+  # Optional: Add a simple log viewer service
+  log-viewer:
+    image: nginx:alpine
+    container_name: zk-combat-logs
+    volumes:
+      - ./docker-logs:/usr/share/nginx/html/logs:ro
+      - ./docker-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - zk-ocean-combat
+    restart: unless-stopped
+
+volumes:
+  logs:
+    driver: local

@@ -1,0 +1,216 @@
+// This file contains the Compact language smart contract for basic combat mechanics
+
+import { types } from './types.compact';
+
+// Basic combat stats structure
+export struct CombatStats {
+  health: bigint;
+  attackPower: bigint;
+  defense: bigint;
+  speed: bigint;
+  magicAttack: bigint;
+  magicDefense: bigint;
+}
+
+// Combat action enum
+export enum CombatAction {
+  Attack = 0n;
+  Magic = 1n;
+  Defend = 2n;
+  Flee = 3n;
+}
+
+// Combat result structure
+export struct CombatResult {
+  playerDamage: bigint;
+  monsterDamage: bigint;
+  isPlayerTurn: boolean;
+  isCombatEnded: boolean;
+  playerWon: boolean;
+}
+
+// Basic combat session
+export struct BasicCombatSession {
+  sessionId: bigint;
+  playerAddress: Address;
+  playerStats: CombatStats;
+  monsterStats: CombatStats;
+  playerHealth: bigint;
+  monsterHealth: bigint;
+  turn: bigint;
+  isActive: boolean;
+}
+
+const MIN_HEALTH = 50n;
+const MAX_HEALTH = 200n;
+const MIN_STAT = 10n;
+const MAX_STAT = 50n;
+
+export const basicCombatContract = {
+  // State variables
+  sessions: new Map<bigint, BasicCombatSession>(),
+  sessionCounter: 0n,
+
+  // Initialize a basic combat session
+  @zkFunction
+  initializeBasicCombat(
+    playerStats: CombatStats,
+    monsterSeed: bigint,
+    context: Context
+  ): { sessionId: bigint; monsterStats: CombatStats } {
+    // Validate player stats
+    assert(playerStats.health >= MIN_HEALTH && playerStats.health <= MAX_HEALTH, "Invalid player health");
+    assert(playerStats.attackPower >= MIN_STAT && playerStats.attackPower <= MAX_STAT, "Invalid attack power");
+    
+    // Generate monster stats using seed
+    const blockSeed = context.blockHash();
+    const combinedSeed = keccak256(monsterSeed + blockSeed);
+    
+    const monsterStats = this.generateBasicMonsterStats(combinedSeed);
+    
+    // Create session
+    const sessionId = this.sessionCounter++;
+    const session: BasicCombatSession = {
+      sessionId,
+      playerAddress: context.caller(),
+      playerStats,
+      monsterStats,
+      playerHealth: playerStats.health,
+      monsterHealth: monsterStats.health,
+      turn: 0n,
+      isActive: true
+    };
+
+    this.sessions.set(sessionId, session);
+
+    return { sessionId, monsterStats };
+  },
+
+  // Perform a basic combat action
+  @zkFunction
+  performBasicAction(
+    sessionId: bigint,
+    action: CombatAction,
+    context: Context
+  ): CombatResult {
+    const session = this.sessions.get(sessionId);
+    assert(session !== undefined, "Combat session not found");
+    assert(session.isActive, "Combat session is not active");
+    assert(session.playerAddress === context.caller(), "Not authorized for this session");
+
+    // Generate randomness from block hash
+    const blockRandomness = keccak256(context.blockHash() + sessionId + session.turn);
+    
+    let playerDamage = 0n;
+    let monsterDamage = 0n;
+    let isCombatEnded = false;
+    let playerWon = false;
+
+    // Calculate damage based on action
+    if (action === CombatAction.Attack) {
+      const playerRoll = keccak256(blockRandomness + 1n) % 100n;
+      const monsterRoll = keccak256(blockRandomness + 2n) % 100n;
+      
+      monsterDamage = this.calculateBasicDamage(
+        session.playerStats.attackPower,
+        session.monsterStats.defense,
+        playerRoll
+      );
+      
+      playerDamage = this.calculateBasicDamage(
+        session.monsterStats.attackPower,
+        session.playerStats.defense,
+        monsterRoll
+      );
+    } else if (action === CombatAction.Defend) {
+      const defendRoll = keccak256(blockRandomness + 3n) % 100n;
+      
+      playerDamage = this.calculateBasicDamage(
+        session.monsterStats.attackPower,
+        session.playerStats.defense * 2n,
+        defendRoll
+      );
+    } else if (action === CombatAction.Flee) {
+      const fleeRoll = keccak256(blockRandomness + 4n) % 100n;
+      
+      if (fleeRoll < 70n) {
+        isCombatEnded = true;
+        playerWon = false;
+      } else {
+        playerDamage = this.calculateBasicDamage(
+          session.monsterStats.attackPower,
+          session.playerStats.defense,
+          fleeRoll
+        );
+      }
+    }
+
+    // Apply damage
+    session.playerHealth = session.playerHealth > playerDamage ? 
+      session.playerHealth - playerDamage : 0n;
+    session.monsterHealth = session.monsterHealth > monsterDamage ? 
+      session.monsterHealth - monsterDamage : 0n;
+
+    // Check for combat end
+    if (session.playerHealth === 0n) {
+      isCombatEnded = true;
+      playerWon = false;
+    } else if (session.monsterHealth === 0n) {
+      isCombatEnded = true;
+      playerWon = true;
+    }
+
+    // Update session
+    session.turn++;
+    session.isActive = !isCombatEnded;
+    this.sessions.set(sessionId, session);
+
+    return {
+      playerDamage,
+      monsterDamage,
+      isPlayerTurn: session.turn % 2n === 1n,
+      isCombatEnded,
+      playerWon
+    };
+  },
+
+  // Generate basic monster stats
+  generateBasicMonsterStats(seed: bigint): CombatStats {
+    const health = MIN_HEALTH + (keccak256(seed) % (MAX_HEALTH - MIN_HEALTH));
+    const attackPower = MIN_STAT + (keccak256(seed + 1n) % (MAX_STAT - MIN_STAT));
+    const defense = MIN_STAT + (keccak256(seed + 2n) % (MAX_STAT - MIN_STAT));
+    const speed = MIN_STAT + (keccak256(seed + 3n) % (MAX_STAT - MIN_STAT));
+    const magicAttack = MIN_STAT + (keccak256(seed + 4n) % (MAX_STAT - MIN_STAT));
+    const magicDefense = MIN_STAT + (keccak256(seed + 5n) % (MAX_STAT - MIN_STAT));
+
+    return {
+      health,
+      attackPower,
+      defense,
+      speed,
+      magicAttack,
+      magicDefense
+    };
+  },
+
+  // Calculate basic damage
+  calculateBasicDamage(
+    attackStat: bigint,
+    defenseStat: bigint,
+    randomRoll: bigint
+  ): bigint {
+    let baseDamage = attackStat > defenseStat ? attackStat - defenseStat : 1n;
+    
+    // Random variance (80% to 120% of base damage)
+    const variance = 80n + (randomRoll % 41n);
+    baseDamage = (baseDamage * variance) / 100n;
+    
+    return baseDamage;
+  },
+
+  // Get session details
+  @viewFunction
+  getBasicSession(sessionId: bigint): BasicCombatSession | null {
+    return this.sessions.get(sessionId) || null;
+  }
+};

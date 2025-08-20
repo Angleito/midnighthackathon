@@ -1,0 +1,291 @@
+// Stats Manager for ZK Ocean Combat
+import { CombatStats } from './ZKCombat.compact';
+
+// Player level and experience data
+export struct PlayerProfile {
+  address: Address;
+  level: bigint;
+  experience: bigint;
+  totalCombatsWon: bigint;
+  totalCombatsLost: bigint;
+  baseStats: CombatStats;
+  statPoints: bigint;
+  lastCombatBlock: bigint;
+}
+
+// Equipment item structure
+export struct Equipment {
+  itemId: bigint;
+  itemType: bigint; // 0=weapon, 1=armor, 2=accessory
+  statBonus: CombatStats;
+  rarity: bigint; // 0=common, 1=rare, 2=epic, 3=legendary
+  durability: bigint;
+  maxDurability: bigint;
+}
+
+// Loot drop information
+export struct LootDrop {
+  itemIds: Array<bigint>;
+  experienceGained: bigint;
+  goldGained: bigint;
+}
+
+// Private data for stat verification
+export struct StatUpgradeProof {
+  playerAddress: Address;
+  newStats: CombatStats;
+  pointsSpent: bigint;
+  secretSalt: bigint;
+}
+
+const EXPERIENCE_PER_LEVEL = 100n;
+const STAT_POINTS_PER_LEVEL = 5n;
+const MAX_STAT_VALUE = 100n;
+const COMBAT_COOLDOWN_BLOCKS = 3n; // Prevent rapid farming
+
+export const statsManagerContract = {
+  // Player profiles storage
+  playerProfiles: new Map<Address, PlayerProfile>(),
+  playerEquipment: new Map<Address, Equipment[]>(),
+  equipmentCounter: 0n,
+  
+  // Item database
+  itemDatabase: new Map<bigint, Equipment>(),
+  
+  // Initialize a new player profile
+  @zkFunction
+  createPlayerProfile(context: Context): PlayerProfile {
+    const playerAddress = context.caller();
+    
+    // Check if player already exists
+    assert(!this.playerProfiles.has(playerAddress), "Player profile already exists");
+    
+    // Create starting stats
+    const baseStats: CombatStats = {
+      health: 100n,
+      attackPower: 20n,
+      defense: 15n,
+      speed: 18n,
+      magicAttack: 16n,
+      magicDefense: 12n
+    };
+    
+    const profile: PlayerProfile = {
+      address: playerAddress,
+      level: 1n,
+      experience: 0n,
+      totalCombatsWon: 0n,
+      totalCombatsLost: 0n,
+      baseStats,
+      statPoints: 0n,
+      lastCombatBlock: 0n
+    };
+    
+    this.playerProfiles.set(playerAddress, profile);
+    this.playerEquipment.set(playerAddress, []);
+    
+    return profile;
+  },
+  
+  // Award experience and loot after combat with ZK proof
+  @zkFunction
+  awardCombatRewards(
+    playerAddress: Address,
+    isVictory: boolean,
+    monsterLevel: bigint,
+    blockRandomSeed: bigint, // From combat block hash
+    context: Context
+  ): LootDrop {
+    const profile = this.playerProfiles.get(playerAddress);
+    assert(profile !== undefined, "Player profile not found");
+    
+    // Prevent rapid farming by enforcing cooldown
+    assert(
+      context.blockNumber() >= profile.lastCombatBlock + COMBAT_COOLDOWN_BLOCKS,
+      "Combat cooldown not met"
+    );
+    
+    // Calculate experience gained based on victory and monster level
+    let expGained = 0n;
+    if (isVictory) {
+      expGained = 50n + (monsterLevel * 10n);
+      profile.totalCombatsWon++;
+    } else {
+      expGained = 10n + (monsterLevel * 2n); // Small exp for trying
+      profile.totalCombatsLost++;
+    }
+    
+    // Add experience and check for level up
+    const oldLevel = profile.level;
+    profile.experience += expGained;
+    
+    // Level up calculation
+    const newLevel = 1n + (profile.experience / EXPERIENCE_PER_LEVEL);
+    if (newLevel > oldLevel) {
+      const levelsGained = newLevel - oldLevel;
+      profile.level = newLevel;
+      profile.statPoints += levelsGained * STAT_POINTS_PER_LEVEL;
+    }
+    
+    // Generate loot drops using block randomness
+    let lootItems: bigint[] = [];
+    let goldGained = 0n;
+    
+    if (isVictory) {
+      goldGained = 10n + (keccak256(blockRandomSeed) % 50n);
+      
+      // 30% chance for equipment drop
+      const lootRoll = keccak256(blockRandomSeed + 1n) % 100n;
+      if (lootRoll < 30n) {
+        const itemId = this.generateRandomItem(monsterLevel, blockRandomSeed + 2n);
+        lootItems.push(itemId);
+        
+        // Add item to player's inventory
+        const equipment = this.playerEquipment.get(playerAddress) || [];
+        const newItem = this.itemDatabase.get(itemId);
+        if (newItem) {
+          equipment.push(newItem);
+          this.playerEquipment.set(playerAddress, equipment);
+        }
+      }
+    }
+    
+    profile.lastCombatBlock = context.blockNumber();
+    this.playerProfiles.set(playerAddress, profile);
+    
+    return {
+      itemIds: lootItems,
+      experienceGained: expGained,
+      goldGained
+    };
+  },
+  
+  // Upgrade player stats with ZK proof of valid point spending
+  @zkFunction
+  upgradeStats(
+    upgradeProof: StatUpgradeProof,
+    context: Context
+  ): CombatStats {
+    assert(upgradeProof.playerAddress === context.caller(), "Invalid player address");
+    
+    const profile = this.playerProfiles.get(upgradeProof.playerAddress);
+    assert(profile !== undefined, "Player profile not found");
+    assert(profile.statPoints >= upgradeProof.pointsSpent, "Not enough stat points");
+    
+    // Verify the stat upgrade is valid
+    const totalCurrentStats = this.sumStats(profile.baseStats);
+    const totalNewStats = this.sumStats(upgradeProof.newStats);
+    const statIncrease = totalNewStats - totalCurrentStats;
+    
+    assert(statIncrease === upgradeProof.pointsSpent, "Invalid stat point allocation");
+    
+    // Verify no stat exceeds maximum
+    assert(upgradeProof.newStats.health <= MAX_STAT_VALUE, "Health exceeds maximum");
+    assert(upgradeProof.newStats.attackPower <= MAX_STAT_VALUE, "Attack power exceeds maximum");
+    assert(upgradeProof.newStats.defense <= MAX_STAT_VALUE, "Defense exceeds maximum");
+    assert(upgradeProof.newStats.speed <= MAX_STAT_VALUE, "Speed exceeds maximum");
+    assert(upgradeProof.newStats.magicAttack <= MAX_STAT_VALUE, "Magic attack exceeds maximum");
+    assert(upgradeProof.newStats.magicDefense <= MAX_STAT_VALUE, "Magic defense exceeds maximum");
+    
+    // Apply the upgrade
+    profile.baseStats = upgradeProof.newStats;
+    profile.statPoints -= upgradeProof.pointsSpent;
+    
+    this.playerProfiles.set(upgradeProof.playerAddress, profile);
+    
+    return upgradeProof.newStats;
+  },
+  
+  // Calculate total combat stats including equipment bonuses
+  @zkFunction
+  calculateTotalStats(playerAddress: Address): CombatStats {
+    const profile = this.playerProfiles.get(playerAddress);
+    assert(profile !== undefined, "Player profile not found");
+    
+    let totalStats = profile.baseStats;
+    const equipment = this.playerEquipment.get(playerAddress) || [];
+    
+    // Add equipment bonuses
+    for (const item of equipment) {
+      if (item.durability > 0n) { // Only working equipment
+        totalStats = this.addStats(totalStats, item.statBonus);
+      }
+    }
+    
+    return totalStats;
+  },
+  
+  // Generate random equipment item
+  generateRandomItem(monsterLevel: bigint, seed: bigint): bigint {
+    const itemId = this.equipmentCounter++;
+    
+    // Determine item type (0=weapon, 1=armor, 2=accessory)
+    const itemType = keccak256(seed) % 3n;
+    
+    // Determine rarity based on monster level
+    const rarityRoll = keccak256(seed + 1n) % 100n;
+    let rarity = 0n; // common
+    if (rarityRoll < 5n + monsterLevel) rarity = 3n; // legendary
+    else if (rarityRoll < 15n + monsterLevel) rarity = 2n; // epic
+    else if (rarityRoll < 35n + monsterLevel) rarity = 1n; // rare
+    
+    // Generate stat bonuses based on rarity
+    const bonusMultiplier = 1n + rarity * 2n;
+    const statBonus: CombatStats = {
+      health: (keccak256(seed + 2n) % 10n) * bonusMultiplier,
+      attackPower: (keccak256(seed + 3n) % 8n) * bonusMultiplier,
+      defense: (keccak256(seed + 4n) % 6n) * bonusMultiplier,
+      speed: (keccak256(seed + 5n) % 5n) * bonusMultiplier,
+      magicAttack: (keccak256(seed + 6n) % 7n) * bonusMultiplier,
+      magicDefense: (keccak256(seed + 7n) % 5n) * bonusMultiplier
+    };
+    
+    const durability = 100n + (rarity * 50n);
+    
+    const equipment: Equipment = {
+      itemId,
+      itemType,
+      statBonus,
+      rarity,
+      durability,
+      maxDurability: durability
+    };
+    
+    this.itemDatabase.set(itemId, equipment);
+    return itemId;
+  },
+  
+  // Helper function to sum all stats
+  sumStats(stats: CombatStats): bigint {
+    return stats.health + stats.attackPower + stats.defense + 
+           stats.speed + stats.magicAttack + stats.magicDefense;
+  },
+  
+  // Helper function to add two stat structures
+  addStats(stats1: CombatStats, stats2: CombatStats): CombatStats {
+    return {
+      health: stats1.health + stats2.health,
+      attackPower: stats1.attackPower + stats2.attackPower,
+      defense: stats1.defense + stats2.defense,
+      speed: stats1.speed + stats2.speed,
+      magicAttack: stats1.magicAttack + stats2.magicAttack,
+      magicDefense: stats1.magicDefense + stats2.magicDefense
+    };
+  },
+  
+  // View functions for getting player data
+  @viewFunction
+  getPlayerProfile(playerAddress: Address): PlayerProfile | null {
+    return this.playerProfiles.get(playerAddress) || null;
+  },
+  
+  @viewFunction
+  getPlayerEquipment(playerAddress: Address): Equipment[] {
+    return this.playerEquipment.get(playerAddress) || [];
+  },
+  
+  @viewFunction
+  getItem(itemId: bigint): Equipment | null {
+    return this.itemDatabase.get(itemId) || null;
+  }
+};

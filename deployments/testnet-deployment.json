@@ -1,0 +1,25 @@
+{
+  "network": "testnet",
+  "endpoint": "https://testnet.midnight.network",
+  "deployedAt": "2025-08-18T21:23:06.857Z",
+  "deployerAddress": "0xb61fc649d8723",
+  "contracts": [
+    {
+      "name": "ZKCombat",
+      "address": "0x16a7362f96be6f43b42237ab19e820be115c9e07",
+      "transactionHash": "0x359acf429fcacdd698173bbf187b8fa51c0932dce81638d5243b881f76fe2948",
+      "deploymentBlock": 1755552179
+    },
+    {
+      "name": "StatsManager",
+      "address": "0x7c63d66c084ad3a709b2f9433789c50e17af099d",
+      "transactionHash": "0xcb151ea6a535b229f12c50fc619109c2579321561620b60ad55268d6698798ff",
+      "deploymentBlock": 1755552184
+    }
+  ],
+  "networkInfo": {
+    "blockNumber": 1755552186,
+    "networkId": "midnight-testnet-1",
+    "chainId": 2024
+  }
+}

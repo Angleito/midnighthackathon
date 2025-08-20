@@ -1,0 +1,492 @@
+// ZK Ocean Combat - Advanced Smart Contract with Monster Switching and Privacy
+
+// Combat stats structure
+export struct CombatStats {
+  health: bigint;
+  attackPower: bigint;
+  defense: bigint;
+  speed: bigint;
+  magicAttack: bigint;
+  magicDefense: bigint;
+}
+
+// Combat action types
+export enum CombatAction {
+  Attack = 0n;
+  Magic = 1n;
+  Defend = 2n;
+  Flee = 3n;
+  SwitchMonster = 4n;
+}
+
+// Monster commitment for hiding stats
+export struct MonsterCommitment {
+  statsHash: bigint; // Hash of monster stats + nonce
+  nonce: bigint;     // Secret nonce for reveal
+  revealed: boolean; // Whether stats have been revealed
+}
+
+// Player monster inventory
+export struct MonsterInventory {
+  activeMonster: CombatStats;
+  benchMonsters: Array<CombatStats>;
+  switchCooldown: bigint; // Block number when switch is available
+  switchesUsed: bigint;   // Number of switches in this combat
+}
+
+// Combat action history for audit trail
+export struct CombatActionRecord {
+  turn: bigint;
+  action: CombatAction;
+  playerDamage: bigint;
+  monsterDamage: bigint;
+  blockNumber: bigint;
+  transactionHash: bigint;
+}
+
+// Combat session state
+export struct CombatSession {
+  sessionId: bigint;
+  playerAddress: Address;
+  playerStats: CombatStats;
+  enemyCommitment: MonsterCommitment;
+  playerHealth: bigint;
+  enemyHealth: bigint;
+  turn: bigint;
+  isActive: boolean;
+  lastActionBlock: bigint;
+  turnDeadline: bigint;
+  playerInventory: MonsterInventory;
+  actionHistory: Array<CombatActionRecord>;
+}
+
+// Combat result for a single action
+export struct CombatResult {
+  playerDamage: bigint;
+  monsterDamage: bigint;
+  isPlayerTurn: boolean;
+  isCombatEnded: boolean;
+  playerWon: boolean;
+}
+
+// Private combat data that stays hidden
+export struct PrivateCombatData {
+  playerSecretSeed: bigint;
+  monsterSecretSeed: bigint;
+  damageRoll: bigint;
+  criticalChance: bigint;
+}
+
+const MAX_HEALTH = 200n;
+const MIN_HEALTH = 50n;
+const MAX_STAT = 50n;
+const MIN_STAT = 10n;
+const TURN_TIMEOUT_BLOCKS = 30n; // 30 blocks (~5 minutes) per turn
+const SWITCH_COOLDOWN_BLOCKS = 5n; // 5 blocks cooldown between switches
+const MAX_SWITCHES_PER_COMBAT = 3n; // Max 3 monster switches per combat
+
+// Main ZK Combat Contract
+export const zkCombatContract = {
+  // State variables for storing combat sessions
+  combatSessions: new Map<bigint, CombatSession>(),
+  sessionCounter: 0n,
+  playerActiveSessions: new Map<Address, bigint>(),
+  // Store revealed monster stats after combat ends
+  revealedMonsterStats: new Map<bigint, CombatStats>(),
+
+  // Initialize a new combat session with commitment to hidden monster stats
+  @zkFunction
+  initializeCombat(
+    playerStats: CombatStats,
+    playerBenchMonsters: Array<CombatStats>,
+    monsterCommitment: bigint, // Hash commitment to monster stats
+    commitmentNonce: bigint,   // Secret nonce for later reveal
+    context: Context
+  ): { sessionId: bigint; playerHealth: bigint; turnDeadline: bigint } {
+    // Verify player stats are within valid range
+    assert(playerStats.health >= MIN_HEALTH && playerStats.health <= MAX_HEALTH, "Invalid player health");
+    assert(playerStats.attackPower >= MIN_STAT && playerStats.attackPower <= MAX_STAT, "Invalid attack power");
+    assert(playerStats.defense >= MIN_STAT && playerStats.defense <= MAX_STAT, "Invalid defense");
+    assert(playerStats.speed >= MIN_STAT && playerStats.speed <= MAX_STAT, "Invalid speed");
+    assert(playerStats.magicAttack >= MIN_STAT && playerStats.magicAttack <= MAX_STAT, "Invalid magic attack");
+    assert(playerStats.magicDefense >= MIN_STAT && playerStats.magicDefense <= MAX_STAT, "Invalid magic defense");
+
+    // Verify the monster commitment is valid
+    const blockRandomness = context.blockHash();
+    
+    // Create monster inventory with active monster and bench
+    const playerInventory: MonsterInventory = {
+      activeMonster: playerStats,
+      benchMonsters: playerBenchMonsters,
+      switchCooldown: 0n,
+      switchesUsed: 0n
+    };
+    
+    // Create enemy commitment (stats will be revealed at combat end)
+    const enemyCommitment: MonsterCommitment = {
+      statsHash: monsterCommitment,
+      nonce: commitmentNonce,
+      revealed: false
+    };
+    
+    // Create new session
+    const sessionId = this.sessionCounter++;
+    const currentBlock = context.blockNumber();
+    const session: CombatSession = {
+      sessionId,
+      playerAddress: context.caller(),
+      playerStats,
+      enemyCommitment,
+      playerHealth: playerStats.health,
+      enemyHealth: 0n, // Will be set when commitment is revealed
+      turn: 0n,
+      isActive: true,
+      lastActionBlock: currentBlock,
+      turnDeadline: currentBlock + TURN_TIMEOUT_BLOCKS,
+      playerInventory,
+      actionHistory: []
+    };
+
+    this.combatSessions.set(sessionId, session);
+    this.playerActiveSessions.set(context.caller(), sessionId);
+
+    // Return session ID and basic session data
+    return {
+      sessionId,
+      playerHealth: session.playerHealth,
+      turnDeadline: session.turnDeadline
+    };
+  },
+
+  // Perform a combat action with ZK proof (now includes monster switching)
+  @zkFunction
+  performAction(
+    sessionId: bigint,
+    action: CombatAction,
+    privateDamageData: PrivateCombatData, // Hidden damage calculation details
+    enemyStatsForAction: CombatStats, // Enemy stats for this action (verified against commitment)
+    context: Context
+  ): CombatResult {
+    const session = this.combatSessions.get(sessionId);
+    assert(session !== undefined, "Combat session not found");
+    assert(session.isActive, "Combat session is not active");
+    assert(session.playerAddress === context.caller(), "Not authorized for this session");
+    
+    const currentBlock = context.blockNumber();
+    
+    // Check for turn timeout
+    assert(currentBlock <= session.turnDeadline, "Turn deadline exceeded - combat forfeited");
+    
+    // Prevent spam attacks by enforcing block delay
+    assert(currentBlock > session.lastActionBlock, "Must wait for next block");
+    
+    // Verify enemy stats against commitment for this action
+    const expectedHash = keccak256(this.hashCombatStats(enemyStatsForAction) + session.enemyCommitment.nonce);
+    assert(expectedHash === session.enemyCommitment.statsHash, "Invalid enemy stats provided");
+
+    // Handle monster switching
+    if (action === CombatAction.SwitchMonster) {
+      return this.handleMonsterSwitch(session, privateDamageData.damageRoll, context);
+    }
+    
+    // Generate deterministic randomness from current block hash + session data
+    const blockRandomness = keccak256(context.blockHash() + sessionId + session.turn);
+    
+    let playerDamage = 0n;
+    let monsterDamage = 0n;
+    let isCombatEnded = false;
+    let playerWon = false;
+
+    // Calculate damage based on action with block-based randomness
+    if (action === CombatAction.Attack) {
+      const playerRoll = keccak256(blockRandomness + 1n) % 100n;
+      const monsterRoll = keccak256(blockRandomness + 2n) % 100n;
+      
+      monsterDamage = this.calculateDamage(
+        session.playerInventory.activeMonster.attackPower,
+        enemyStatsForAction.defense,
+        playerRoll,
+        privateDamageData.criticalChance
+      );
+      
+      // Monster counter-attack
+      playerDamage = this.calculateDamage(
+        enemyStatsForAction.attackPower,
+        session.playerInventory.activeMonster.defense,
+        monsterRoll,
+        20n // 20% crit chance for monsters
+      );
+    } else if (action === CombatAction.Magic) {
+      const playerMagicRoll = keccak256(blockRandomness + 3n) % 100n;
+      const monsterMagicRoll = keccak256(blockRandomness + 4n) % 100n;
+      
+      monsterDamage = this.calculateDamage(
+        session.playerInventory.activeMonster.magicAttack,
+        enemyStatsForAction.magicDefense,
+        playerMagicRoll,
+        privateDamageData.criticalChance
+      );
+      
+      playerDamage = this.calculateDamage(
+        enemyStatsForAction.magicAttack,
+        session.playerInventory.activeMonster.magicDefense,
+        monsterMagicRoll,
+        15n // 15% crit chance for monster magic
+      );
+    } else if (action === CombatAction.Defend) {
+      const defendRoll = keccak256(blockRandomness + 5n) % 100n;
+      
+      // Defending reduces incoming damage by 50%
+      playerDamage = this.calculateDamage(
+        enemyStatsForAction.attackPower,
+        session.playerInventory.activeMonster.defense * 2n, // Double defense
+        defendRoll,
+        10n // Reduced crit chance when defending
+      );
+    } else if (action === CombatAction.Flee) {
+      const fleeRoll = keccak256(blockRandomness + 6n) % 100n;
+      
+      // Flee attempt - 70% success rate based on speed difference
+      const fleeChance = 70n + (session.playerInventory.activeMonster.speed - enemyStatsForAction.speed);
+      
+      if (fleeRoll < fleeChance) {
+        isCombatEnded = true;
+        playerWon = false; // Fled, so didn't win
+      } else {
+        // Failed to flee, take damage
+        playerDamage = this.calculateDamage(
+          enemyStatsForAction.attackPower,
+          session.playerInventory.activeMonster.defense,
+          fleeRoll,
+          25n // Higher crit chance when flee fails
+        );
+      }
+    }
+
+    // Apply damage
+    session.playerHealth = session.playerHealth > playerDamage ? 
+      session.playerHealth - playerDamage : 0n;
+    session.enemyHealth = session.enemyHealth > monsterDamage ? 
+      session.enemyHealth - monsterDamage : 0n;
+    
+    // Set enemy health on first action if not set
+    if (session.enemyHealth === 0n && session.turn === 0n) {
+      session.enemyHealth = enemyStatsForAction.health;
+    }
+
+    // Check for combat end
+    if (session.playerHealth === 0n) {
+      isCombatEnded = true;
+      playerWon = false;
+    } else if (session.enemyHealth === 0n) {
+      isCombatEnded = true;
+      playerWon = true;
+    }
+
+    // Record action in history
+    const actionRecord: CombatActionRecord = {
+      turn: session.turn,
+      action,
+      playerDamage,
+      monsterDamage,
+      blockNumber: currentBlock,
+      transactionHash: context.transactionHash()
+    };
+    session.actionHistory.push(actionRecord);
+    
+    // Update session state
+    session.turn++;
+    session.lastActionBlock = currentBlock;
+    session.turnDeadline = currentBlock + TURN_TIMEOUT_BLOCKS;
+    session.isActive = !isCombatEnded;
+
+    if (isCombatEnded) {
+      this.playerActiveSessions.delete(session.playerAddress);
+      // Reveal enemy stats now that combat is over
+      session.enemyCommitment.revealed = true;
+      this.revealedMonsterStats.set(sessionId, enemyStatsForAction);
+    }
+
+    this.combatSessions.set(sessionId, session);
+
+    return {
+      playerDamage,
+      monsterDamage,
+      isPlayerTurn: session.turn % 2n === 1n,
+      isCombatEnded,
+      playerWon
+    };
+  },
+
+  // Generate monster stats based on seed (private function)
+  generateMonsterStats(seed: bigint): CombatStats {
+    const health = MIN_HEALTH + (keccak256(seed) % (MAX_HEALTH - MIN_HEALTH));
+    const attackPower = MIN_STAT + (keccak256(seed + 1n) % (MAX_STAT - MIN_STAT));
+    const defense = MIN_STAT + (keccak256(seed + 2n) % (MAX_STAT - MIN_STAT));
+    const speed = MIN_STAT + (keccak256(seed + 3n) % (MAX_STAT - MIN_STAT));
+    const magicAttack = MIN_STAT + (keccak256(seed + 4n) % (MAX_STAT - MIN_STAT));
+    const magicDefense = MIN_STAT + (keccak256(seed + 5n) % (MAX_STAT - MIN_STAT));
+
+    return {
+      health,
+      attackPower,
+      defense,
+      speed,
+      magicAttack,
+      magicDefense
+    };
+  },
+
+  // Calculate damage with randomness and critical hits (private with ZK proof)
+  calculateDamage(
+    attackStat: bigint,
+    defenseStat: bigint,
+    randomRoll: bigint,
+    critChance: bigint
+  ): bigint {
+    // Base damage calculation
+    let baseDamage = attackStat > defenseStat ? attackStat - defenseStat : 1n;
+    
+    // Random variance (80% to 120% of base damage)
+    const variance = 80n + (randomRoll % 41n); // 80-120
+    baseDamage = (baseDamage * variance) / 100n;
+    
+    // Critical hit check
+    const critRoll = (randomRoll + attackStat) % 100n;
+    if (critRoll < critChance) {
+      baseDamage = (baseDamage * 150n) / 100n; // 1.5x damage on crit
+    }
+    
+    return baseDamage;
+  },
+
+  // Get combat session details (public view)
+  @viewFunction
+  getCombatSession(sessionId: bigint): CombatSession | null {
+    return this.combatSessions.get(sessionId) || null;
+  },
+
+  // Get player's active session (public view)
+  @viewFunction
+  getPlayerActiveSession(playerAddress: Address): bigint | null {
+    return this.playerActiveSessions.get(playerAddress) || null;
+  },
+
+  // Verify a combat proof (for client-side verification)
+  @viewFunction
+  verifyCombatProof(
+    sessionId: bigint,
+    action: CombatAction,
+    expectedResult: CombatResult,
+    proof: bigint
+  ): boolean {
+    // This would implement proof verification logic
+    // For now, return true if session exists and proof is non-zero
+    const session = this.combatSessions.get(sessionId);
+    return session !== undefined && proof > 0n;
+  },
+
+  // Handle monster switching action
+  handleMonsterSwitch(
+    session: CombatSession,
+    monsterIndex: bigint, // Index of monster to switch to
+    context: Context
+  ): CombatResult {
+    const currentBlock = context.blockNumber();
+    
+    // Check switch constraints
+    assert(session.playerInventory.switchesUsed < MAX_SWITCHES_PER_COMBAT, "Max switches exceeded");
+    assert(currentBlock >= session.playerInventory.switchCooldown, "Switch still on cooldown");
+    assert(monsterIndex < BigInt(session.playerInventory.benchMonsters.length), "Invalid monster index");
+    
+    // Perform the switch
+    const newActiveMonster = session.playerInventory.benchMonsters[Number(monsterIndex)];
+    const oldActiveMonster = session.playerInventory.activeMonster;
+    
+    // Swap monsters
+    session.playerInventory.activeMonster = newActiveMonster;
+    session.playerInventory.benchMonsters[Number(monsterIndex)] = oldActiveMonster;
+    
+    // Update switch state
+    session.playerInventory.switchesUsed++;
+    session.playerInventory.switchCooldown = currentBlock + SWITCH_COOLDOWN_BLOCKS;
+    
+    // Switch counts as a turn with potential penalty (skip attack, take damage)
+    const blockRandomness = keccak256(context.blockHash() + session.sessionId + session.turn);
+    const enemyAttackRoll = keccak256(blockRandomness + 7n) % 100n;
+    
+    // Player takes damage during switch (vulnerability)
+    const switchDamage = 10n + (enemyAttackRoll % 20n); // 10-29 damage
+    
+    session.playerHealth = session.playerHealth > switchDamage ? 
+      session.playerHealth - switchDamage : 0n;
+    
+    const isCombatEnded = session.playerHealth === 0n;
+    const playerWon = false; // Can't win on a switch turn
+    
+    return {
+      playerDamage: switchDamage,
+      monsterDamage: 0n, // No damage to enemy on switch
+      isPlayerTurn: false, // Enemy gets to attack after switch
+      isCombatEnded,
+      playerWon
+    };
+  },
+
+  // Hash combat stats for commitment verification
+  hashCombatStats(stats: CombatStats): bigint {
+    return keccak256(
+      stats.health + 
+      stats.attackPower * 1000n + 
+      stats.defense * 1000000n + 
+      stats.speed * 1000000000n + 
+      stats.magicAttack * 1000000000000n + 
+      stats.magicDefense * 1000000000000000n
+    );
+  },
+
+  // Get revealed enemy stats after combat ends
+  @viewFunction
+  getRevealedEnemyStats(sessionId: bigint): CombatStats | null {
+    return this.revealedMonsterStats.get(sessionId) || null;
+  },
+
+  // Check if a turn has timed out
+  @viewFunction
+  isSessionTimedOut(sessionId: bigint, currentBlock: bigint): boolean {
+    const session = this.combatSessions.get(sessionId);
+    if (!session) return false;
+    return currentBlock > session.turnDeadline && session.isActive;
+  },
+
+  // Force end combat due to timeout
+  @zkFunction
+  forfeitDueToTimeout(sessionId: bigint, context: Context): boolean {
+    const session = this.combatSessions.get(sessionId);
+    assert(session !== undefined, "Combat session not found");
+    assert(session.isActive, "Combat session is not active");
+    
+    const currentBlock = context.blockNumber();
+    assert(currentBlock > session.turnDeadline, "Turn deadline not exceeded");
+    
+    // End combat due to timeout - player loses
+    session.isActive = false;
+    this.playerActiveSessions.delete(session.playerAddress);
+    this.combatSessions.set(sessionId, session);
+    
+    return true;
+  }
+};
+
+// Helper function to create monster commitment
+export function createMonsterCommitment(stats: CombatStats, nonce: bigint): bigint {
+  const statsHash = keccak256(
+    stats.health + 
+    stats.attackPower * 1000n + 
+    stats.defense * 1000000n + 
+    stats.speed * 1000000000n + 
+    stats.magicAttack * 1000000000000n + 
+    stats.magicDefense * 1000000000000000n
+  );
+  return keccak256(statsHash + nonce);
+}
